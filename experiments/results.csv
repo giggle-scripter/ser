@@ -1,0 +1,1 @@
+run_id,date,model,lr,dropout,batch,augment,epochs_trained,train_acc,val_acc,test_acc,f1_macro,f1_weighted,notes
