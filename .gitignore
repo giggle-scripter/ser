@@ -14,3 +14,7 @@ AGENTS.md
 CLAUDE.md
 
 .python-version
+
+data/
+checkpoints/
+experiments/results.csv
