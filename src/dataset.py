@@ -7,33 +7,40 @@ from typing import Tuple, List
 
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
 
 try:
     from src.features import process_audio
-    from src.config import DATA_DIR
+    from src.config import (
+        DATA_DIR,
+        EMOTIONS,
+        EMOTION_LIST,
+        RANDOM_SEED,
+        TEST_RATIO,
+        TRAIN_RATIO,
+        VAL_RATIO,
+    )
 except ModuleNotFoundError:
     from features import process_audio
-    from config import DATA_DIR
+    from config import (
+        DATA_DIR,
+        EMOTIONS,
+        EMOTION_LIST,
+        RANDOM_SEED,
+        TEST_RATIO,
+        TRAIN_RATIO,
+        VAL_RATIO,
+    )
 
-# ── Mapping mã cảm xúc theo chuẩn RAVDESS ──────────────────────────────────
-EMOTION_MAP = {
-    "01": "neutral",
-    "02": "calm",
-    "03": "happy",
-    "04": "sad",
-    "05": "angry",
-    "06": "fearful",
-    "07": "disgust",
-    "08": "surprised",
-}
+LABEL_TO_INDEX = {label: idx for idx, label in enumerate(EMOTION_LIST)}
 
 def parse_filename(path: str | Path) -> str:
-    stem = Path(path).stem          # bỏ đuôi .wav
-    parts = stem.split("-")         # tách theo dấu '-'
-    emotion_code = parts[2]         # vị trí thứ 3 = mã cảm xúc
-    return EMOTION_MAP.get(emotion_code, "unknown")
+    stem = Path(path).stem
+    parts = stem.split("-")
+    if len(parts) < 3:
+        return "unknown"
+    emotion_code = parts[2]
+    return EMOTIONS.get(emotion_code, "unknown")
 
 class RAVDESSDataset(Dataset):
     def __init__(
@@ -63,23 +70,29 @@ class RAVDESSDataset(Dataset):
 
 def build_dataset(
     data_dir: str | Path = DATA_DIR,
-    train_ratio: float = 0.70,
-    val_ratio:   float = 0.15,
-    # test_ratio tự động = 1 - train - val = 0.15
-    random_state: int  = 42,
-    feature_type: str  = "mfcc",
-) -> Tuple[RAVDESSDataset, RAVDESSDataset, RAVDESSDataset, LabelEncoder]:
-    
+    train_ratio: float = TRAIN_RATIO,
+    val_ratio: float = VAL_RATIO,
+    test_ratio: float = TEST_RATIO,
+    random_state: int = RANDOM_SEED,
+    feature_type: str = "mfcc",
+) -> Tuple[RAVDESSDataset, RAVDESSDataset, RAVDESSDataset, List[str]]:
     data_dir = Path(data_dir)
+    ratio_sum = train_ratio + val_ratio + test_ratio
 
-    # ── Thu thập tất cả file và nhãn ──
-    all_paths, all_labels_str = [], []
+    if not np.isclose(ratio_sum, 1.0):
+        raise ValueError(
+            "Tổng train_ratio + val_ratio + test_ratio phải bằng 1.0. "
+            f"Hiện tại là {ratio_sum:.4f}."
+        )
+
+    all_paths, all_labels = [], []
     for wav_file in sorted(data_dir.glob("*/*.wav")):
         label_str = parse_filename(wav_file)
-        if label_str == "unknown":
+        label_idx = LABEL_TO_INDEX.get(label_str)
+        if label_idx is None:
             continue
         all_paths.append(str(wav_file))
-        all_labels_str.append(label_str)
+        all_labels.append(label_idx)
 
     if len(all_paths) == 0:
         raise FileNotFoundError(
@@ -87,12 +100,7 @@ def build_dataset(
             "Hãy kiểm tra đường dẫn DATA_DIR trong config.py."
         )
 
-    # ── Encode nhãn string → số nguyên ──
-    le = LabelEncoder()
-    all_labels = le.fit_transform(all_labels_str)   # 'angry'→0, 'calm'→1, ...
-
-    # ── Stratified split: train | temp(val+test) ──
-    temp_ratio = 1.0 - train_ratio                  # 0.30
+    temp_ratio = val_ratio + test_ratio
     X_train, X_temp, y_train, y_temp = train_test_split(
         all_paths, all_labels,
         test_size=temp_ratio,
@@ -100,9 +108,10 @@ def build_dataset(
         stratify=all_labels,
     )
 
+    test_share_in_temp = test_ratio / temp_ratio
     X_val, X_test, y_val, y_test = train_test_split(
         X_temp, y_temp,
-        test_size=0.5,
+        test_size=test_share_in_temp,
         random_state=random_state,
         stratify=y_temp,
     )
@@ -114,10 +123,4 @@ def build_dataset(
     test_ds  = RAVDESSDataset(X_test,  y_test.tolist(),
                                use_augment=False, feature_type=feature_type)
 
-    print(f"Dataset đã sẵn sàng:")
-    print(f"  Train : {len(train_ds)} mẫu")
-    print(f"  Val   : {len(val_ds)} mẫu")
-    print(f"  Test  : {len(test_ds)} mẫu")
-    print(f"  Classes: {list(le.classes_)}")
-
-    return train_ds, val_ds, test_ds, le
+    return train_ds, val_ds, test_ds, EMOTION_LIST.copy()

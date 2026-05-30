@@ -63,6 +63,7 @@ Xây dựng hệ thống **phân loại cảm xúc từ giọng nói** (Speech E
 - **Class imbalance**: Neutral ít hơn các emotion khác (chỉ có 1 intensity level) → dùng Weighted Cross-Entropy Loss
 - **Domain mismatch**: Giọng diễn viên studio ≠ giọng thật của người dùng → cần trình bày trong báo cáo
 - **Split strategy**: Stratified split theo nhãn, tỉ lệ 70/15/15 (train/val/test), seed cố định = 42
+- **Label order**: Cố định theo `EMOTION_LIST` trong `config.py` để tránh lệch thứ tự class giữa train, evaluate và inference
 
 ### Feature Extraction Pipeline
 ```
@@ -131,9 +132,12 @@ speech-emotion-recognition/
 
 ### config.py — tất cả tham số tập trung tại đây
 ```python
+from pathlib import Path
+
 # Paths
-DATA_PATH = "data/ravdess/"
-CHECKPOINT_DIR = "checkpoints/"
+ROOT_DIR = Path(__file__).parent.parent
+DATA_DIR = ROOT_DIR / "data" / "ravdess"
+CHECKPOINT_DIR = ROOT_DIR / "checkpoints"
 
 # Audio
 SAMPLE_RATE = 22050
@@ -147,6 +151,7 @@ EMOTIONS = {
     "01": "neutral", "02": "calm",    "03": "happy",    "04": "sad",
     "05": "angry",   "06": "fearful", "07": "disgust",  "08": "surprised"
 }
+EMOTION_LIST = list(EMOTIONS.values())
 
 # Training
 BATCH_SIZE = 32
@@ -159,6 +164,12 @@ EARLY_STOP_PATIENCE = 7
 TRAIN_RATIO, VAL_RATIO, TEST_RATIO = 0.70, 0.15, 0.15
 RANDOM_SEED = 42
 ```
+
+### dataset.py — trách nhiệm rõ ràng
+- `parse_filename()` chỉ đọc emotion code từ tên file và map qua `EMOTIONS` trong `config.py`
+- `RAVDESSDataset.__getitem__()` chỉ gọi `process_audio()` và trả về `(feature, label)`
+- `build_dataset()` chỉ làm 3 việc: quét file `.wav`, stratified split theo ratio trong `config.py`, và trả về `train_ds, val_ds, test_ds, class_names`
+- `dataset.py` không giữ bản copy riêng của emotion mapping và không tự tính class weights cho loss
 
 ---
 
@@ -295,7 +306,7 @@ Input: (batch, 40, T)
 #### Linh — 3 SP
 - [ ] **SP1.6** Download RAVDESS, đọc file naming convention, nghe thử từng emotion
 - [ ] **SP1.7** Viết `notebook 01_explore_data.ipynb`: phân phối nhãn, plot waveform, thống kê độ dài
-- [ ] **SP1.8** Viết `dataset.py`: `parse_filename()`, `RAVDESSDataset`, `build_dataset()` với stratified split
+- [ ] **SP1.8** Viết `dataset.py`: `parse_filename()`, `RAVDESSDataset`, `build_dataset()` với stratified split; dùng ratio/label mapping từ `config.py`
 
 **Checkpoint G1:** `DataLoader(train_ds, batch_size=32)` chạy không lỗi, in ra batch shape `(32, 40, T)`.
 
@@ -315,7 +326,7 @@ Input: (batch, 40, T)
 - [ ] **SP2.5** Viết `evaluate.py`: `evaluate()`, `plot_confusion_matrix()`, tính F1 macro/weighted
 
 #### Linh — 2 SP
-- [ ] **SP2.6** Viết `dataset.py` phần Augmentation, tích hợp Weighted Loss weights
+- [ ] **SP2.6** Hoàn thiện luồng augmentation cho `train_ds`; cung cấp labels/class names ổn định để `train.py` tính Weighted Loss weights
 - [ ] **SP2.7** Tạo `app/streamlit_app.py` skeleton: 2 tab (upload file / ghi âm), chưa cần kết nối model
 
 **Checkpoint G2:** `python src/train.py` chạy end-to-end 10 epoch, lưu checkpoint, không lỗi.
