@@ -1,5 +1,4 @@
 # dataset.py — PyTorch Dataset cho RAVDESS
-# Phụ trách: Linh
 # Hàm chính: parse_filename(), RAVDESSDataset, build_dataset()
 
 from pathlib import Path
@@ -15,6 +14,7 @@ try:
         DATA_DIR,
         EMOTIONS,
         EMOTION_LIST,
+        FEATURE_TYPE,
         RANDOM_SEED,
         TEST_RATIO,
         TRAIN_RATIO,
@@ -26,6 +26,7 @@ except ModuleNotFoundError:
         DATA_DIR,
         EMOTIONS,
         EMOTION_LIST,
+        FEATURE_TYPE,
         RANDOM_SEED,
         TEST_RATIO,
         TRAIN_RATIO,
@@ -33,6 +34,7 @@ except ModuleNotFoundError:
     )
 
 LABEL_TO_INDEX = {label: idx for idx, label in enumerate(EMOTION_LIST)}
+VALID_FEATURE_TYPES = {"mfcc", "mfcc_delta"}
 
 def parse_filename(path: str | Path) -> str:
     stem = Path(path).stem
@@ -48,8 +50,13 @@ class RAVDESSDataset(Dataset):
         file_paths: List[str],
         labels: List[int],
         use_augment: bool = False,
-        feature_type: str = "mfcc",
+        feature_type: str = FEATURE_TYPE,
     ):
+        if feature_type not in VALID_FEATURE_TYPES:
+            raise ValueError(
+                f"Invalid feature_type: {feature_type!r}. "
+                f"Expected one of {sorted(VALID_FEATURE_TYPES)}."
+            )
         self.file_paths   = file_paths
         self.labels       = labels
         self.use_augment  = use_augment
@@ -74,8 +81,14 @@ def build_dataset(
     val_ratio: float = VAL_RATIO,
     test_ratio: float = TEST_RATIO,
     random_state: int = RANDOM_SEED,
-    feature_type: str = "mfcc",
+    feature_type: str = FEATURE_TYPE,
 ) -> Tuple[RAVDESSDataset, RAVDESSDataset, RAVDESSDataset, List[str]]:
+    if feature_type not in VALID_FEATURE_TYPES:
+        raise ValueError(
+            f"Invalid feature_type: {feature_type!r}. "
+            f"Expected one of {sorted(VALID_FEATURE_TYPES)}."
+        )
+
     data_dir = Path(data_dir)
     ratio_sum = train_ratio + val_ratio + test_ratio
 
@@ -116,11 +129,11 @@ def build_dataset(
         stratify=y_temp,
     )
 
-    train_ds = RAVDESSDataset(X_train, y_train.tolist(),
+    train_ds = RAVDESSDataset(list(X_train), list(y_train),
                                use_augment=True,  feature_type=feature_type)
-    val_ds   = RAVDESSDataset(X_val,   y_val.tolist(),
+    val_ds   = RAVDESSDataset(list(X_val),   list(y_val),
                                use_augment=False, feature_type=feature_type)
-    test_ds  = RAVDESSDataset(X_test,  y_test.tolist(),
+    test_ds  = RAVDESSDataset(list(X_test),  list(y_test),
                                use_augment=False, feature_type=feature_type)
 
     return train_ds, val_ds, test_ds, EMOTION_LIST.copy()

@@ -13,10 +13,19 @@ for d in [CHECKPOINT_DIR, EXPERIMENT_DIR, FIGURE_DIR]:
 
 SAMPLE_RATE = 22050
 DURATION    = 3.0
+FEATURE_TYPE = "mfcc_delta"  # options: "mfcc", "mfcc_delta"
+RUN_NAME = "cnn1d_mfcc_delta_fix1"
 N_MFCC      = 40
 N_FFT       = 2048
 HOP_LENGTH  = 512
 N_MELS      = 128
+
+if FEATURE_TYPE == "mfcc":
+    N_FEATURES = N_MFCC
+elif FEATURE_TYPE == "mfcc_delta":
+    N_FEATURES = N_MFCC * 3
+else:
+    raise ValueError(f"Unknown FEATURE_TYPE: {FEATURE_TYPE!r}")
 
 EMOTIONS = {
     "01": "neutral", "02": "calm",    "03": "happy",   "04": "sad",

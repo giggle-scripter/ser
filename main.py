@@ -1,3 +1,9 @@
 # main.py — entry point
 # Dùng để chạy training từ command line
-# python main.py
+# uv run python main.py
+
+from src.train import train
+
+
+if __name__ == "__main__":
+    train()
