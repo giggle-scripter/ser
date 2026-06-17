@@ -2,4 +2,4 @@ run_name,model,feature_type,test_loss,test_acc,test_f1_macro,test_f1_weight,note
 cnn1d_mfcc_baseline_organic,CNN1D,mfcc,0.834427930690624,0.7314814814814815,0.7251162203006465,0.7311659737397922,Primary baseline: MFCC + Adam on current RAVDESS split
 cnn1d_mfcc_delta_fix1_organic,CNN1D,mfcc_delta,0.9725019092913028,0.6435185185185185,0.6292091816797796,0.6416136667020017,Delta feature ablation: MFCC + delta + delta-delta with Adam
 cnn1d_mfcc_delta_ls005_do025_adam,CNN1D,mfcc_delta,1.0244139786119815,0.6990740740740741,0.689514004218006,0.6940259484643598,Regularization ablation: delta features + label smoothing 0.05 + dropout 0.25 + Adam
-cnn1d_mfcc_delta_ls005_adamw,CNN1D,mfcc_delta,0.8479027085834079,0.7916666666666666,0.7901835819532566,0.793013171210229,Final selected model: delta features + label smoothing 0.05 + dropout 0.25 + AdamW
+cnn1d_mfcc_delta_ls005_adamw,CNN1D,mfcc_delta,0.5792039367887709,0.9166666666666666,0.9144854459959719,0.9172854754016286,Final selected model: verified re-evaluation of delta features + label smoothing 0.05 + dropout 0.25 + AdamW

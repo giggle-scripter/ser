@@ -1,7 +1,8 @@
 {
   "best_epoch": 46,
-  "test_loss": 0.8479027085834079,
-  "test_acc": 0.7916666666666666,
-  "test_f1_macro": 0.7901835819532566,
-  "test_f1_weight": 0.793013171210229
+  "test_loss": 0.5792039367887709,
+  "test_acc": 0.9166666666666666,
+  "test_f1_macro": 0.9144854459959719,
+  "test_f1_weight": 0.9172854754016286,
+  "verification_note": "Re-evaluated checkpoints/cnn1d_mfcc_delta_ls005_adamw/best_model.pt on the current RAVDESS test split with the saved training criterion."
 }

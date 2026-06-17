@@ -169,6 +169,6 @@ checkpoints/<RUN_NAME>/
 | `cnn1d_mfcc_baseline_organic` | Baseline chính | MFCC | Adam | 0.7315 | 0.7251 | 0.7312 |
 | `cnn1d_mfcc_delta_fix1_organic` | Thử thêm delta/delta-delta | MFCC + delta + delta-delta | Adam | 0.6435 | 0.6292 | 0.6416 |
 | `cnn1d_mfcc_delta_ls005_do025_adam` | Thử regularization | MFCC + delta + delta-delta | Adam | 0.6991 | 0.6895 | 0.6940 |
-| `cnn1d_mfcc_delta_ls005_adamw` | Model cuối | MFCC + delta + delta-delta | AdamW | 0.7917 | 0.7902 | 0.7930 |
+| `cnn1d_mfcc_delta_ls005_adamw` | Model cuối | MFCC + delta + delta-delta | AdamW | 0.9167 | 0.9145 | 0.9173 |
 
-Model cuối được chọn là `cnn1d_mfcc_delta_ls005_adamw` vì đạt kết quả tốt nhất trên test set. Thử nghiệm delta/delta-delta riêng lẻ không ổn định trên split hiện tại, nên phần cải thiện chính đến từ cấu hình regularization và AdamW.
+Model cuối được chọn là `cnn1d_mfcc_delta_ls005_adamw` vì đạt kết quả tốt nhất trên test set sau khi re-evaluate checkpoint hiện tại. Thử nghiệm delta/delta-delta riêng lẻ không ổn định trên split hiện tại, nên phần cải thiện chính đến từ cấu hình regularization và AdamW.
