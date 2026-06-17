@@ -1,0 +1,35 @@
+{
+  "run_name": "cnn1d_mfcc_delta_ls005_adamw",
+  "model": "CNN1D",
+  "feature_type": "mfcc_delta",
+  "n_mfcc": 40,
+  "n_features": 120,
+  "batch_size": 32,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "optimizer": "adamw",
+  "epochs": 50,
+  "dropout": 0.25,
+  "best_metric": "val_loss",
+  "best_metric_mode": "min",
+  "class_weight_smoothing": 0.0,
+  "label_smoothing": 0.05,
+  "label_encoding": "ravdess",
+  "augmentation": {
+    "time_stretch_min": 0.95,
+    "time_stretch_max": 1.05,
+    "pitch_shift_min": -1.0,
+    "pitch_shift_max": 1.0,
+    "noise_std": 0.003
+  },
+  "class_names": [
+    "neutral",
+    "calm",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "disgust",
+    "surprised"
+  ]
+}

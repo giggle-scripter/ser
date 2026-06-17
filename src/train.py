@@ -1,6 +1,3 @@
-# train.py — training loop
-# Hàm chính: train()
-# Bao gồm: Adam optimizer, Weighted CrossEntropyLoss, Early Stopping, checkpoint save
 from __future__ import annotations
 
 import json
@@ -14,63 +11,106 @@ from torch.utils.data import DataLoader
 try:
     from src.config import (
         BATCH_SIZE,
+        AUG_NOISE_STD,
+        AUG_PITCH_SHIFT_MAX,
+        AUG_PITCH_SHIFT_MIN,
+        AUG_TIME_STRETCH_MAX,
+        AUG_TIME_STRETCH_MIN,
+        BEST_METRIC,
+        BEST_METRIC_MODE,
         CHECKPOINT_DIR,
+        CLASS_WEIGHT_SMOOTHING,
         DROPOUT,
         EARLY_STOP_PATIENCE,
         EPOCHS,
         FEATURE_TYPE,
+        LABEL_SMOOTHING,
+        LABEL_ENCODING,
         LEARNING_RATE,
         LR_SCHEDULER_FACTOR,
         LR_SCHEDULER_PATIENCE,
+        MODEL_NAME,
         N_FEATURES,
         N_MFCC,
         NUM_CLASSES,
+        OPTIMIZER_NAME,
         RUN_NAME,
         WEIGHT_DECAY,
     )
     from src.dataset import build_dataset
-    from src.model import CNN1D
+    from src.model import create_model
     from src.utils import append_result_csv, get_device, set_seed
 except ModuleNotFoundError:
     from config import (
         BATCH_SIZE,
+        AUG_NOISE_STD,
+        AUG_PITCH_SHIFT_MAX,
+        AUG_PITCH_SHIFT_MIN,
+        AUG_TIME_STRETCH_MAX,
+        AUG_TIME_STRETCH_MIN,
+        BEST_METRIC,
+        BEST_METRIC_MODE,
         CHECKPOINT_DIR,
+        CLASS_WEIGHT_SMOOTHING,
         DROPOUT,
         EARLY_STOP_PATIENCE,
         EPOCHS,
         FEATURE_TYPE,
+        LABEL_SMOOTHING,
+        LABEL_ENCODING,
         LEARNING_RATE,
         LR_SCHEDULER_FACTOR,
         LR_SCHEDULER_PATIENCE,
+        MODEL_NAME,
         N_FEATURES,
         N_MFCC,
         NUM_CLASSES,
+        OPTIMIZER_NAME,
         RUN_NAME,
         WEIGHT_DECAY,
     )
     from dataset import build_dataset
-    from model import CNN1D
+    from model import create_model
     from utils import append_result_csv, get_device, set_seed
 
 
 RUN_NOTES = {
-    "cnn1d_mfcc_baseline": "MFCC only baseline",
-    "cnn1d_mfcc_delta_fix1": "MFCC + delta + delta-delta final model",
+    "cnn1d_mfcc_baseline_organic": "MFCC only baseline",
+    "cnn1d_mfcc_delta_fix1_organic": "MFCC + delta + delta-delta ablation",
+    "cnn1d_mfcc_delta_ls005_do025_adam": (
+        "MFCC + delta + label smoothing + dropout + Adam"
+    ),
+    "cnn1d_mfcc_delta_ls005_adamw": (
+        "MFCC + delta + label smoothing + dropout + AdamW"
+    ),
 }
 
 
 def build_config_dict() -> dict:
     return {
         "run_name": RUN_NAME,
-        "model": "CNN1D",
+        "model": MODEL_NAME,
         "feature_type": FEATURE_TYPE,
         "n_mfcc": N_MFCC,
         "n_features": N_FEATURES,
         "batch_size": BATCH_SIZE,
         "learning_rate": LEARNING_RATE,
         "weight_decay": WEIGHT_DECAY,
+        "optimizer": OPTIMIZER_NAME,
         "epochs": EPOCHS,
         "dropout": DROPOUT,
+        "best_metric": BEST_METRIC,
+        "best_metric_mode": BEST_METRIC_MODE,
+        "class_weight_smoothing": CLASS_WEIGHT_SMOOTHING,
+        "label_smoothing": LABEL_SMOOTHING,
+        "label_encoding": LABEL_ENCODING,
+        "augmentation": {
+            "time_stretch_min": AUG_TIME_STRETCH_MIN,
+            "time_stretch_max": AUG_TIME_STRETCH_MAX,
+            "pitch_shift_min": AUG_PITCH_SHIFT_MIN,
+            "pitch_shift_max": AUG_PITCH_SHIFT_MAX,
+            "noise_std": AUG_NOISE_STD,
+        },
     }
 
 
@@ -109,10 +149,25 @@ def save_checkpoint(
     return run_dir
 
 
-def compute_class_weights(labels: list[int], num_classes: int) -> torch.Tensor:
+def compute_class_weights(
+    labels: list[int],
+    num_classes: int,
+    smoothing: float = CLASS_WEIGHT_SMOOTHING,
+) -> torch.Tensor:
     counts = torch.bincount(torch.tensor(labels), minlength=num_classes).float()
+    if smoothing > 0:
+        counts = counts + smoothing * counts.mean()
     weights = counts.sum() / (num_classes * counts.clamp(min=1.0))
+    weights = weights / weights.mean()
     return weights
+
+
+def is_better(current: float, best: float, mode: str) -> bool:
+    if mode == "min":
+        return current < best
+    if mode == "max":
+        return current > best
+    raise ValueError(f"Unknown BEST_METRIC_MODE: {mode!r}")
 
 
 def run_epoch(
@@ -181,8 +236,13 @@ def train() -> None:
     print(f"RUN_NAME: {RUN_NAME}")
     print(f"FEATURE_TYPE: {FEATURE_TYPE}")
     print(f"N_FEATURES: {N_FEATURES}")
-    print("model class: CNN1D")
+    print(f"model class: {MODEL_NAME}")
     print(f"checkpoint directory: {checkpoint_dir}")
+    print(f"best metric: {BEST_METRIC} ({BEST_METRIC_MODE})")
+    print(f"class weight smoothing: {CLASS_WEIGHT_SMOOTHING}")
+    print(f"label smoothing: {LABEL_SMOOTHING}")
+    print(f"label encoding: {LABEL_ENCODING}")
+    print(f"optimizer: {OPTIMIZER_NAME}")
 
     train_ds, val_ds, test_ds, class_names = build_dataset()
     config_dict["class_names"] = class_names
@@ -206,16 +266,40 @@ def train() -> None:
         num_workers=0,
     )
 
-    model = CNN1D(num_classes=NUM_CLASSES, dropout=DROPOUT).to(device)
+    model = create_model(
+        model_name=MODEL_NAME,
+        in_channels=N_FEATURES,
+        num_classes=NUM_CLASSES,
+        dropout=DROPOUT,
+    ).to(device)
 
-    class_weights = compute_class_weights(train_ds.labels, NUM_CLASSES).to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY,
+    class_weights = compute_class_weights(
+        train_ds.labels,
+        NUM_CLASSES,
+        smoothing=CLASS_WEIGHT_SMOOTHING,
+    ).to(device)
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights,
+        label_smoothing=LABEL_SMOOTHING,
     )
+
+    optimizer_name = OPTIMIZER_NAME.lower()
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=LEARNING_RATE,
+            weight_decay=WEIGHT_DECAY,
+        )
+    elif optimizer_name == "adamw":
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=LEARNING_RATE,
+            weight_decay=WEIGHT_DECAY,
+        )
+    else:
+        raise ValueError(
+            f"Unknown SER_OPTIMIZER={OPTIMIZER_NAME!r}. Use 'adam' or 'adamw'."
+        )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
@@ -223,7 +307,7 @@ def train() -> None:
         factor=LR_SCHEDULER_FACTOR,
     )
 
-    best_score = float("-inf")
+    best_score = float("inf") if BEST_METRIC_MODE == "min" else float("-inf")
     best_epoch = 0
     epochs_no_improve = 0
     best_ckpt_path = checkpoint_dir / "best_model.pt"
@@ -271,8 +355,13 @@ def train() -> None:
             "val_f1_macro": val_metrics["f1_macro"],
             "val_f1_weighted": val_metrics["f1_weighted"],
         }
-        current_score = epoch_metrics.get("val_f1_macro", epoch_metrics["val_acc"])
-        is_best = current_score > best_score
+        if BEST_METRIC not in epoch_metrics:
+            raise KeyError(
+                f"BEST_METRIC={BEST_METRIC!r} is not available. "
+                f"Available metrics: {sorted(epoch_metrics)}"
+            )
+        current_score = epoch_metrics[BEST_METRIC]
+        is_best = is_better(current_score, best_score, BEST_METRIC_MODE)
 
         save_checkpoint(
             model=model,
@@ -288,7 +377,10 @@ def train() -> None:
             best_score = current_score
             best_epoch = epoch
             epochs_no_improve = 0
-            print(f"Saved best checkpoint to: {best_ckpt_path}")
+            print(
+                f"Saved best checkpoint to: {best_ckpt_path} "
+                f"({BEST_METRIC}={best_score:.4f})"
+            )
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= EARLY_STOP_PATIENCE:
@@ -319,7 +411,7 @@ def train() -> None:
     append_result_csv(
         {
             "run_name": RUN_NAME,
-            "model": "CNN1D",
+            "model": MODEL_NAME,
             "feature_type": FEATURE_TYPE,
             "test_loss": test_metrics["loss"],
             "test_acc": test_metrics["acc"],

@@ -1,7 +1,3 @@
-# evaluate.py — đánh giá model
-# Hàm chính: evaluate(), plot_confusion_matrix()
-# Tính F1 macro + weighted, confusion matrix normalized theo row
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,12 +21,14 @@ try:
         DROPOUT,
         FEATURE_TYPE,
         FIGURE_DIR,
+        LABEL_ENCODING,
+        MODEL_NAME,
         N_FEATURES,
         NUM_CLASSES,
         RUN_NAME,
     )
     from src.dataset import build_dataset
-    from src.model import CNN1D
+    from src.model import create_model
     from src.utils import append_result_csv, get_device, set_seed
 except ModuleNotFoundError:
     from config import (
@@ -39,19 +37,34 @@ except ModuleNotFoundError:
         DROPOUT,
         FEATURE_TYPE,
         FIGURE_DIR,
+        LABEL_ENCODING,
+        MODEL_NAME,
         N_FEATURES,
         NUM_CLASSES,
         RUN_NAME,
     )
     from dataset import build_dataset
-    from model import CNN1D
+    from model import create_model
     from utils import append_result_csv, get_device, set_seed
 
 
 RUN_NOTES = {
-    "cnn1d_mfcc_baseline": "MFCC only baseline",
-    "cnn1d_mfcc_delta_fix1": "MFCC + delta + delta-delta final model",
+    "cnn1d_mfcc_baseline_organic": "MFCC only baseline",
+    "cnn1d_mfcc_delta_fix1_organic": "MFCC + delta + delta-delta ablation",
+    "cnn1d_mfcc_delta_ls005_do025_adam": (
+        "MFCC + delta + label smoothing + dropout + Adam"
+    ),
+    "cnn1d_mfcc_delta_ls005_adamw": (
+        "MFCC + delta + label smoothing + dropout + AdamW"
+    ),
 }
+
+
+def safe_filename(text: str) -> str:
+    return "".join(
+        char if char.isalnum() or char in {"-", "_"} else "_"
+        for char in text
+    ).strip("_")
 
 
 def evaluate(
@@ -114,6 +127,7 @@ def plot_confusion_matrix(
     class_names: list[str],
     save_path: str | Path,
     normalize: bool = True,
+    title_note: str | None = None,
 ) -> None:
     if normalize:
         cm = cm.astype(np.float32)
@@ -124,6 +138,10 @@ def plot_confusion_matrix(
     im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
     ax.figure.colorbar(im, ax=ax)
 
+    title = "Confusion Matrix" + (" (Normalized by row)" if normalize else "")
+    if title_note:
+        title = f"{title}\n{title_note}"
+
     ax.set(
         xticks=np.arange(len(class_names)),
         yticks=np.arange(len(class_names)),
@@ -131,7 +149,7 @@ def plot_confusion_matrix(
         yticklabels=class_names,
         ylabel="True label",
         xlabel="Predicted label",
-        title="Confusion Matrix" + (" (Normalized by row)" if normalize else ""),
+        title=title,
     )
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
@@ -166,18 +184,26 @@ def load_checkpoint_model(
     checkpoint_metrics = checkpoint.get("metrics")
     saved_feature_type = checkpoint_config.get("feature_type", FEATURE_TYPE)
     saved_n_features = checkpoint_config.get("n_features", N_FEATURES)
+    saved_model_name = checkpoint_config.get("model", MODEL_NAME)
+    saved_label_encoding = checkpoint_config.get("label_encoding", LABEL_ENCODING)
 
     print(f"checkpoint path: {checkpoint_path}")
+    print(f"saved model: {saved_model_name}")
     print(f"saved feature_type: {saved_feature_type}")
+    print(f"saved label_encoding: {saved_label_encoding}")
     print(f"saved n_features: {saved_n_features}")
     if checkpoint_metrics is not None:
         print(f"saved metrics: {checkpoint_metrics}")
 
     class_names = checkpoint.get("class_names") or checkpoint_config.get("class_names")
     if class_names is None:
-        _, _, _, class_names = build_dataset(feature_type=saved_feature_type)
+        _, _, _, class_names = build_dataset(
+            feature_type=saved_feature_type,
+            label_encoding=saved_label_encoding,
+        )
 
-    model = CNN1D(
+    model = create_model(
+        model_name=saved_model_name,
         in_channels=saved_n_features,
         num_classes=NUM_CLASSES,
         dropout=DROPOUT,
@@ -200,9 +226,15 @@ def main() -> None:
         )
 
     model, class_names, checkpoint_config = load_checkpoint_model(checkpoint_path, device)
+    run_name = checkpoint_config.get("run_name", RUN_NAME)
+    model_name = checkpoint_config.get("model", MODEL_NAME)
     feature_type = checkpoint_config.get("feature_type", FEATURE_TYPE)
+    label_encoding = checkpoint_config.get("label_encoding", LABEL_ENCODING)
 
-    _, _, test_ds, _ = build_dataset(feature_type=feature_type)
+    _, _, test_ds, _ = build_dataset(
+        feature_type=feature_type,
+        label_encoding=label_encoding,
+    )
     test_loader = DataLoader(
         test_ds,
         batch_size=BATCH_SIZE,
@@ -224,24 +256,28 @@ def main() -> None:
     print("\nClassification report:")
     print(metrics["classification_report"])
 
-    save_path = FIGURE_DIR / "confusion_matrix.png"
+    figure_name = safe_filename(
+        f"confusion_matrix_{run_name}_{model_name}_{feature_type}"
+    ) + ".png"
+    save_path = FIGURE_DIR / figure_name
     plot_confusion_matrix(
         cm=metrics["confusion_matrix"],
         class_names=class_names,
         save_path=save_path,
         normalize=True,
+        title_note=f"run={run_name} | model={model_name} | feature={feature_type}",
     )
     print(f"\nSaved confusion matrix to: {save_path}")
     append_result_csv(
         {
-            "run_name": checkpoint_config.get("run_name", RUN_NAME),
-            "model": checkpoint_config.get("model", "CNN1D"),
+            "run_name": run_name,
+            "model": model_name,
             "feature_type": feature_type,
             "test_loss": metrics["loss"],
             "test_acc": metrics["acc"],
             "test_f1_macro": metrics["f1_macro"],
             "test_f1_weight": metrics["f1_weighted"],
-            "notes": RUN_NOTES.get(checkpoint_config.get("run_name", RUN_NAME), ""),
+            "notes": RUN_NOTES.get(run_name, ""),
         }
     )
 

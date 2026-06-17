@@ -1,11 +1,9 @@
-# dataset.py — PyTorch Dataset cho RAVDESS
-# Hàm chính: parse_filename(), RAVDESSDataset, build_dataset()
-
 from pathlib import Path
 from typing import Tuple, List
 
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import Dataset
 
 try:
@@ -15,6 +13,7 @@ try:
         EMOTIONS,
         EMOTION_LIST,
         FEATURE_TYPE,
+        LABEL_ENCODING,
         RANDOM_SEED,
         TEST_RATIO,
         TRAIN_RATIO,
@@ -27,6 +26,7 @@ except ModuleNotFoundError:
         EMOTIONS,
         EMOTION_LIST,
         FEATURE_TYPE,
+        LABEL_ENCODING,
         RANDOM_SEED,
         TEST_RATIO,
         TRAIN_RATIO,
@@ -82,11 +82,17 @@ def build_dataset(
     test_ratio: float = TEST_RATIO,
     random_state: int = RANDOM_SEED,
     feature_type: str = FEATURE_TYPE,
+    label_encoding: str = LABEL_ENCODING,
 ) -> Tuple[RAVDESSDataset, RAVDESSDataset, RAVDESSDataset, List[str]]:
     if feature_type not in VALID_FEATURE_TYPES:
         raise ValueError(
             f"Invalid feature_type: {feature_type!r}. "
             f"Expected one of {sorted(VALID_FEATURE_TYPES)}."
+        )
+    if label_encoding not in {"ravdess", "legacy"}:
+        raise ValueError(
+            f"Invalid label_encoding: {label_encoding!r}. "
+            "Expected 'ravdess' or 'legacy'."
         )
 
     data_dir = Path(data_dir)
@@ -98,20 +104,27 @@ def build_dataset(
             f"Hiện tại là {ratio_sum:.4f}."
         )
 
-    all_paths, all_labels = [], []
+    all_paths, all_label_names = [], []
     for wav_file in sorted(data_dir.glob("*/*.wav")):
         label_str = parse_filename(wav_file)
-        label_idx = LABEL_TO_INDEX.get(label_str)
-        if label_idx is None:
+        if label_str not in LABEL_TO_INDEX:
             continue
         all_paths.append(str(wav_file))
-        all_labels.append(label_idx)
+        all_label_names.append(label_str)
 
     if len(all_paths) == 0:
         raise FileNotFoundError(
             f"Không tìm thấy file .wav nào trong {data_dir}. "
             "Hãy kiểm tra đường dẫn DATA_DIR trong config.py."
         )
+
+    if label_encoding == "legacy":
+        encoder = LabelEncoder()
+        all_labels = encoder.fit_transform(all_label_names).tolist()
+        class_names = [str(label) for label in encoder.classes_]
+    else:
+        all_labels = [LABEL_TO_INDEX[label] for label in all_label_names]
+        class_names = EMOTION_LIST.copy()
 
     temp_ratio = val_ratio + test_ratio
     X_train, X_temp, y_train, y_temp = train_test_split(
@@ -136,4 +149,4 @@ def build_dataset(
     test_ds  = RAVDESSDataset(list(X_test),  list(y_test),
                                use_augment=False, feature_type=feature_type)
 
-    return train_ds, val_ds, test_ds, EMOTION_LIST.copy()
+    return train_ds, val_ds, test_ds, class_names

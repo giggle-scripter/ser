@@ -1,6 +1,3 @@
-# features.py — trích xuất đặc trưng âm thanh
-# Hàm chính: load_audio(), extract_mfcc(), augment()
-
 import random
 
 import librosa
@@ -8,6 +5,11 @@ import numpy as np
 
 try:
     from src.config import (
+        AUG_NOISE_STD,
+        AUG_PITCH_SHIFT_MAX,
+        AUG_PITCH_SHIFT_MIN,
+        AUG_TIME_STRETCH_MAX,
+        AUG_TIME_STRETCH_MIN,
         DURATION,
         HOP_LENGTH,
         N_FFT,
@@ -17,6 +19,11 @@ try:
     )
 except ModuleNotFoundError:
     from config import (
+        AUG_NOISE_STD,
+        AUG_PITCH_SHIFT_MAX,
+        AUG_PITCH_SHIFT_MIN,
+        AUG_TIME_STRETCH_MAX,
+        AUG_TIME_STRETCH_MIN,
         DURATION,
         HOP_LENGTH,
         N_FFT,
@@ -70,7 +77,7 @@ def extract_mfcc(
 
 
 def extract_mel(y: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Return shape: (1, n_mels, time_frames) — dùng cho CNN-2D."""
+    """Return shape: (1, n_mels, time_frames) for CNN-2D."""
     y = fix_length(y, sr)
     mel = librosa.feature.melspectrogram(
         y=y,
@@ -85,14 +92,21 @@ def extract_mel(y: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
 
 
 def augment(y: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Chỉ gọi trên train set."""
+    """Apply train-time audio augmentation."""
     choice = random.randint(0, 2)
     if choice == 0:
-        y = librosa.effects.time_stretch(y, rate=random.uniform(0.9, 1.1))
+        y = librosa.effects.time_stretch(
+            y,
+            rate=random.uniform(AUG_TIME_STRETCH_MIN, AUG_TIME_STRETCH_MAX),
+        )
     elif choice == 1:
-        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=random.uniform(-2, 2))
+        y = librosa.effects.pitch_shift(
+            y,
+            sr=sr,
+            n_steps=random.uniform(AUG_PITCH_SHIFT_MIN, AUG_PITCH_SHIFT_MAX),
+        )
     else:
-        y = y + 0.005 * np.random.randn(len(y))
+        y = y + AUG_NOISE_STD * np.random.randn(len(y))
     return y.astype(np.float32)
 
 
@@ -101,7 +115,6 @@ def process_audio(
     use_augment: bool = False,
     feature_type: str = "mfcc",
 ) -> np.ndarray:
-    """Hàm Dataset gọi trong __getitem__()."""
     y = load_audio(path)
     if use_augment:
         y = augment(y)

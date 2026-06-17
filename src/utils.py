@@ -1,5 +1,3 @@
-# utils.py — các hàm tiện ích dùng chung
-# Hàm chính: set_seed(), logging helpers
 import random, csv
 from datetime import datetime
 from pathlib import Path

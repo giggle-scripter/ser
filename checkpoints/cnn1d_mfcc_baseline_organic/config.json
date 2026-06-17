@@ -1,0 +1,35 @@
+{
+  "run_name": "cnn1d_mfcc_baseline_organic",
+  "model": "CNN1D",
+  "feature_type": "mfcc",
+  "n_mfcc": 40,
+  "n_features": 40,
+  "batch_size": 32,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "optimizer": "adam",
+  "epochs": 50,
+  "dropout": 0.3,
+  "best_metric": "val_loss",
+  "best_metric_mode": "min",
+  "class_weight_smoothing": 0.0,
+  "label_smoothing": 0.0,
+  "label_encoding": "ravdess",
+  "augmentation": {
+    "time_stretch_min": 0.9,
+    "time_stretch_max": 1.1,
+    "pitch_shift_min": -2.0,
+    "pitch_shift_max": 2.0,
+    "noise_std": 0.005
+  },
+  "class_names": [
+    "neutral",
+    "calm",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "disgust",
+    "surprised"
+  ]
+}
