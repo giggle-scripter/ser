@@ -18,3 +18,8 @@ CLAUDE.md
 data/
 checkpoints/
 experiments/results.csv
+
+.DS_Store
+**/.DS_Store
+
+sp.py
